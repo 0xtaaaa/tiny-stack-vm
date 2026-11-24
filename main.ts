@@ -1,11 +1,8 @@
-// make.fun's tiny stack ISA v1, rule for rule with the reference VM (generator/subject/vm.mjs): every trap keeps the
-// output written before it, the trapping instruction writes nothing, and limits are checked before their effect.
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const STACK = 256, CALLS = 64, WORDS = 256, STEPS = 1_000_000, OUT_MAX = 65_536;
 
-// Per opcode byte: [immediate bytes, values popped, values pushed + 1]. A 0 third entry is an unknown opcode.
 const META = new Uint8Array(256 * 3);
 for (const [lo, hi, im, po, pu] of [
   [0x00, 0x00, 0, 0, 0], [0x01, 0x01, 1, 0, 1], [0x02, 0x02, 4, 0, 1], [0x03, 0x03, 0, 1, 0],
@@ -17,49 +14,48 @@ for (const [lo, hi, im, po, pu] of [
   [0x50, 0x51, 0, 1, 0], [0x52, 0x52, 0, 0, 1], [0x53, 0x53, 0, 1, 0],
 ]) for (let o = lo; o <= hi; o++) META.set([im, po, pu + 1], o * 3);
 
-/** One program to its end: the bytes it wrote and the exit code it ended with (a trap's code included). */
 function run(p: Uint8Array, inp: Uint8Array): { out: Uint8Array; code: number } {
   const n = p.length;
   const D = new Int32Array(STACK), C = new Int32Array(CALLS), M = new Int32Array(WORDS), O = new Uint8Array(OUT_MAX);
   let sp = 0, csp = 0, ol = 0, ip = 0, pc = 0, steps = 0;
   const end = (code: number) => ({ out: O.subarray(0, ol), code });
   for (;;) {
-    if (steps === STEPS) return end(10); // step limit
-    if (pc < 0 || pc >= n) return end(9); // pc outside the program
+    if (steps === STEPS) return end(10);
+    if (pc < 0 || pc >= n) return end(9);
     const op = p[pc], m = op * 3, pu1 = META[m + 2];
-    if (pu1 === 0) return end(5); // unknown opcode
+    if (pu1 === 0) return end(5);
     const im = META[m], pops = META[m + 1], pushes = pu1 - 1;
-    if (pc + im >= n) return end(9); // immediate cut off by the end
+    if (pc + im >= n) return end(9);
     steps++;
     const next = pc + 1 + im;
-    if (sp < pops) return end(2); // stack underflow
-    if (sp - pops + pushes > STACK) return end(3); // stack overflow
+    if (sp < pops) return end(2);
+    if (sp - pops + pushes > STACK) return end(3);
     pc = next;
     switch (op) {
-      case 0x00: return end(0); // HALT
-      case 0x01: D[sp++] = (p[next - 1] << 24) >> 24; break; // PUSH8, sign extended
+      case 0x00: return end(0);
+      case 0x01: D[sp++] = (p[next - 1] << 24) >> 24; break;
       case 0x02: D[sp++] = p[next - 4] | (p[next - 3] << 8) | (p[next - 2] << 16) | (p[next - 1] << 24); break;
-      case 0x03: sp--; break; // POP
-      case 0x04: D[sp] = D[sp - 1]; sp++; break; // DUP
-      case 0x05: { const t = D[sp - 1]; D[sp - 1] = D[sp - 2]; D[sp - 2] = t; break; } // SWAP
-      case 0x06: D[sp] = D[sp - 2]; sp++; break; // OVER
-      case 0x07: { const a = D[sp - 3]; D[sp - 3] = D[sp - 2]; D[sp - 2] = D[sp - 1]; D[sp - 1] = a; break; } // ROT
-      case 0x17: D[sp - 1] = -D[sp - 1] | 0; break; // NEG
-      case 0x1b: D[sp - 1] = ~D[sp - 1]; break; // NOT
+      case 0x03: sp--; break;
+      case 0x04: D[sp] = D[sp - 1]; sp++; break;
+      case 0x05: { const t = D[sp - 1]; D[sp - 1] = D[sp - 2]; D[sp - 2] = t; break; }
+      case 0x06: D[sp] = D[sp - 2]; sp++; break;
+      case 0x07: { const a = D[sp - 3]; D[sp - 3] = D[sp - 2]; D[sp - 2] = D[sp - 1]; D[sp - 1] = a; break; }
+      case 0x17: D[sp - 1] = -D[sp - 1] | 0; break;
+      case 0x1b: D[sp - 1] = ~D[sp - 1]; break;
       case 0x30: case 0x31: case 0x32: {
         const rel = ((p[next - 2] | (p[next - 1] << 8)) << 16) >> 16;
         let take = op === 0x30;
         if (!take) { const v = D[--sp]; take = op === 0x31 ? v === 0 : v !== 0; }
-        if (take) pc = next + rel; // the target is checked at the next step
+        if (take) pc = next + rel;
         break;
       }
       case 0x33:
-        if (csp === CALLS) return end(7); // call depth
+        if (csp === CALLS) return end(7);
         C[csp++] = next;
-        pc = p[next - 2] | (p[next - 1] << 8); // an unsigned address
+        pc = p[next - 2] | (p[next - 1] << 8);
         break;
       case 0x34:
-        if (csp === 0) return end(8); // RET with an empty call stack
+        if (csp === 0) return end(8);
         pc = C[--csp];
         break;
       case 0x40: {
@@ -76,7 +72,7 @@ function run(p: Uint8Array, inp: Uint8Array): { out: Uint8Array; code: number } 
         break;
       }
       case 0x50: {
-        const s = String(D[sp - 1]); // decimal ASCII, a leading '-' when negative
+        const s = String(D[sp - 1]);
         if (ol + s.length > OUT_MAX) return end(11);
         sp--;
         for (let i = 0; i < s.length; i++) O[ol++] = s.charCodeAt(i);
@@ -86,8 +82,8 @@ function run(p: Uint8Array, inp: Uint8Array): { out: Uint8Array; code: number } 
         if (ol + 1 > OUT_MAX) return end(11);
         O[ol++] = D[--sp] & 255;
         break;
-      case 0x52: D[sp++] = ip < inp.length ? inp[ip++] : -1; break; // IN: -1 once used up
-      case 0x53: return end(D[--sp] & 255); // EXIT: the low byte
+      case 0x52: D[sp++] = ip < inp.length ? inp[ip++] : -1; break;
+      case 0x53: return end(D[--sp] & 255);
       default: {
         const b = D[sp - 1], a = D[sp - 2];
         let r: number;
@@ -119,7 +115,7 @@ function run(p: Uint8Array, inp: Uint8Array): { out: Uint8Array; code: number } 
           case 0x1e: r = (a >>> (b & 31)) | 0; break;
           case 0x20: r = a === b ? 1 : 0; break;
           case 0x21: r = a < b ? 1 : 0; break;
-          default: r = (a >>> 0) < (b >>> 0) ? 1 : 0; break; // LTU
+          default: r = (a >>> 0) < (b >>> 0) ? 1 : 0; break;
         }
         sp -= 2;
         D[sp++] = r;
