@@ -1,7 +1,6 @@
 import{mkdirSync as m,readFileSync as r,readdirSync as d,writeFileSync as w}from'node:fs';
 import{join as j}from'node:path';
-const T=new Uint8Array(256),B=Buffer.from('AAABAQFDAgJJAwMRBASRBQWhBgbhBwfxEBZhFxdRGBphGxtRHB5hICJhMDAFMTIVMzMFNDQBQEBRQUEhUFERUlJBU1MR','base64');
-for(let i=0;i<69;i+=3)for(let o=B[i];o<=B[i+1];o++)T[o]=B[i+2];
+const T=Buffer.from('AUNJEZGh4fEAAAAAAAAAAGFhYWFhYWFRYWFhUWFhYQBhYWEAAAAAAAAAAAAAAAAABRUVBQEAAAAAAAAAAAAAAFEhAAAAAAAAAAAAAAAAAAAREUER','base64');
 const R=(p:Uint8Array,I:Uint8Array)=>{
 const n=p.length,D=new Int32Array(256),C=new Int32Array(64),M=new Int32Array(256),O=new Uint8Array(65536);
 let s=0,c=0,o=0,i=0,q=0,k=0;
@@ -21,18 +20,13 @@ switch(y){
 case 0:return e(0);
 case 1:D[s++]=p[t-1]<<24>>24;break;
 case 2:D[s++]=p[t-4]|p[t-3]<<8|p[t-2]<<16|p[t-1]<<24;break;
-case 3:s--;break;
-case 4:D[s]=D[s-1];s++;break;
-case 5:{const w=D[s-1];D[s-1]=D[s-2];D[s-2]=w;break}
-case 6:D[s]=D[s-2];s++;break;
-case 7:{const x=D[s-3];D[s-3]=D[s-2];D[s-2]=D[s-1];D[s-1]=x;break}
+case 3:case 4:case 5:case 6:case 7:y==3?s--:y%2?(y>5&&([D[s-3],D[s-2]]=[D[s-2],D[s-3]]),[D[s-2],D[s-1]]=[D[s-1],D[s-2]]):(D[s]=D[s-(y/2-1)],s++);break;
 case 23:D[s-1]=-D[s-1]|0;break;
 case 27:D[s-1]=~D[s-1];break;
 case 48:case 49:case 50:if(y==48||!D[--s]===(y==49))q=t+((p[t-2]|p[t-1]<<8)<<16>>16);break;
 case 51:if(c==64)return e(7);C[c++]=t;q=p[t-2]|p[t-1]<<8;break;
 case 52:if(!c)return e(8);q=C[--c];break;
-case 64:{const a=D[s-1];if(a>>>8)return e(6);D[s-1]=M[a];break}
-case 65:{const a=D[--s],v=D[--s];if(a>>>8)return e(6);M[a]=v;break}
+case 64:case 65:{const a=D[--s];if(a>>>8)return e(6);y==64?D[s++]=M[a]:(M[a]=D[--s]);break}
 case 80:{const z=''+D[--s];if(o+z.length>65536)return e(11);for(let l=0;l<z.length;)O[o++]=z.charCodeAt(l++);break}
 case 81:if(o==65536)return e(11);O[o++]=D[--s]&255;break;
 case 82:D[s++]=i<I.length?I[i++]:-1;break;
